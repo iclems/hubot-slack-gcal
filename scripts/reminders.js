@@ -123,18 +123,19 @@ module.exports = function(robot) {
         if(last_update) _.extend(params, { updatedMin: last_update });
         googleapis.calendar('v3').events.list(params, function(err, resp) {
           if(err) return console.log(err);
+          var items = _.filter(resp.items, function(item) {
+            return helpers.matchMeetingUrl(item.location) || helpers.matchMeetingUrl(item.description);
+          });
           user.last_event_update = new Date().toISOString();
           if(!last_update || !events[userId]) {
-            events[userId] = resp.items;
+            events[userId] = items;
           }
           else {
-            console.log("Event updates for " + userId);
             // stores whether or not we have notified the user for an instance of a recurring event
             var recurrences = {};
-            _.each(resp.items, function(new_event) {
+            _.each(items, function(new_event) {
               var old_event = _.find(events[userId], function(o) { return o.id === new_event.id });
               // event has been updated
-              console.log("updated event for " + userId + " " + new_event.summary);
               if(old_event) {
                 if(new_event.status === 'cancelled') {
                   var old_event = null;
@@ -219,7 +220,6 @@ module.exports = function(robot) {
               }
             });
           }
-          console.log("got events for " + userId);
         });
       });
     });
@@ -237,6 +237,7 @@ module.exports = function(robot) {
         resource_id = req.get("X-Goog-Resource-ID"),
         state = req.get("X-Goog-Resource-State"),
         expires = req.get("X-Goog-Channel-Expiration");
+    console.log('Calendar Webhook');
     if (state === "exists") {
       var userId = null;
       _.find(robot.brain.data.calendarUsers, function(u, uid) {
