@@ -12,6 +12,16 @@ module.exports = function(robot) {
       Fs = require("fs"),
       googleapis = require('googleapis');
 
+  robot.brain.data.calendarUsers = robot.brain.data.calendarUsers ? robot.brain.data.calendarUsers : {};
+
+  function get_calendar_user(userId) {
+    var data = robot.brain.data.calendarUsers[userId];
+    if (!data) {
+      robot.brain.data.calendarUsers[userId] = {}
+    }
+    return robot.brain.data.calendarUsers[userId];
+  }
+
   var groups = {};
   try {
     groups = JSON.parse(Fs.readFileSync("calendar-resources.json").toString());
@@ -36,7 +46,7 @@ module.exports = function(robot) {
   }
 
   robot.on("google:calendar:actionable_event", function(user, event) {
-    robot.brain.data.calendarUsers[user.id].last_event = event.id;
+    get_calendar_user(user.id).last_event = event.id;
   });
 
   robot.respond(/create(me )?( an)? event (.*)/i, function(msg) {
@@ -48,8 +58,8 @@ module.exports = function(robot) {
         .events.quickAdd({ auth: oauth, calendarId: calendar.id, text: msg.match[3] }, function(err, event) {
           if(err || !event) return msg.reply("Error creating an event for " + calendar.summary);
           var id = event.id;
-          robot.brain.data.calendarUsers[msg.message.user].last_event = id;
-          robot.brain.data.calendarUsers[msg.message.user].last_event_calendar = id;
+          get_calendar_user(msg.message.user.id).last_event = id;
+          get_calendar_user(msg.message.user.id).last_event_calendar = id;
           reply_with_new_event(msg, event, "OK, I created an event for you:");
         });
       });
@@ -63,7 +73,7 @@ module.exports = function(robot) {
   };
   robot.respond(/(respond|reply) (yes|no|maybe)/i, function(msg) {
     robot.emit('google:authenticate', msg, function(err, oauth) {
-      var event = robot.brain.data.calendarUsers[msg.message.user.id].last_event;
+      var event = get_calendar_user(msg.message.user.id).last_event;
       if (!event) {
         return msg.reply('I dont know what event you\'re talking about!');
       }
