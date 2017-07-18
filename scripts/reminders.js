@@ -29,6 +29,14 @@ module.exports = function(robot) {
 
   robot.brain.data.calendarUsers = robot.brain.data.calendarUsers ? robot.brain.data.calendarUsers : {};
 
+  function get_calendar_user(userId) {
+    var data = robot.brain.data.calendarUsers[userId];
+    if (!data) {
+      robot.brain.data.calendarUsers[userId] = {}
+    }
+    return robot.brain.data.calendarUsers[userId];
+  }
+
   // set up watch renewal and get initial events list on startup
   function init_watch() {
     _.each(robot.brain.data.calendarUsers, function(user, userId) {
@@ -81,8 +89,8 @@ module.exports = function(robot) {
         var id = uuid.v1();
         googleapis.calendar('v3').events.watch({ auth: oauth, resource: { type: 'web_hook', id: id, address: CALLBACK_URL }, calendarId: calendar.id}, function(err, resp) {
           if(err) return cb(err, undefined);
-          robot.brain.data.calendarUsers[user.id].calendar_watch_token = id;
-          robot.brain.data.calendarUsers[user.id].calendar_watch_expiration = resp.expiration;
+          get_calendar_user(user.id).calendar_watch_token = id;
+          get_calendar_user(user.id).calendar_watch_expiration = resp.expiration;
           setup_watch_renewal(user);
           cb(undefined, undefined);
         });
@@ -92,7 +100,7 @@ module.exports = function(robot) {
 
   // sets up a function to renew the users calendar watch when it expires
   function setup_watch_renewal(user) {
-    var user_calendar_info = robot.brain.data.calendarUsers[user.id];
+    var user_calendar_info = get_calendar_user(user.id);
     if (user_calendar_info && user_calendar_info.calendar_watch_expiration) {
       var diff = parseInt(user_calendar_info.calendar_watch_expiration) - new Date().getTime() - 2000;
       if(diff < 0) setup_calendar_watch(user);
@@ -267,7 +275,7 @@ module.exports = function(robot) {
           msg.reply("Error enabling reminders");
           return console.log(err);
         }
-        robot.brain.data.calendarUsers[msg.message.user.id].calendar_notify_events = true;
+        get_calendar_user(msg.message.user.id).calendar_notify_events = true;
         getEvents(msg.message.user.id);
         msg.reply("I'll remind you about upcoming events.");
       });
