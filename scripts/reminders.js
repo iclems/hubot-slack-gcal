@@ -112,12 +112,13 @@ module.exports = function(robot) {
 
   // populate events list for the given user
   function getEvents(userId) {
-    var user = get_calendar_user(userId);
-    if(!user.calendar_notify_events) return;
+    var calendar_user = get_calendar_user(userId);
+    var user = robot.brain.userForId(userId);
+    if(!calendar_user.calendar_notify_events) return;
     robot.emit('google:authenticate', user, function(err, oauth) {
       getPrimaryCalendar(oauth, function(err, calendar) {
         if(err || !calendar) return console.log(err);
-        var last_update = user.last_event_update;
+        var last_update = calendar_user.last_event_update;
         var params = { auth: oauth, orderBy: 'starttime', maxResults: 500, singleEvents: true, timeMin: new Date().toISOString(), calendarId: calendar.id };
         if(last_update) _.extend(params, { updatedMin: last_update });
         googleapis.calendar('v3').events.list(params, function(err, resp) {
