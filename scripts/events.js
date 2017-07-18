@@ -21,7 +21,7 @@ module.exports = function(robot) {
   } catch(e) {
     console.warn("Could not find calendar-resources.json file");
   }
-  
+
   function reply_with_new_event(msg, event, pretext) {
     var attachment = helpers.event_slack_attachment(event, pretext);
     robot.emit('slack.attachment', {channel: msg.message.room, attachments: [attachment]});
@@ -119,10 +119,10 @@ module.exports = function(robot) {
         var emails = _.compact(_.map(_.compact(msg.match[1].split(' ')), function(username) {
           var user;
           if(username.indexOf('<') === 0) {
-            user = robot.adapter.client.getUserByID(username.replace('<', '').replace('>', '').replace('@', ''));
+            user = robot.brain.userById(username.replace('<', '').replace('>', '').replace('@', ''));
           }
           else {
-            user = robot.adapter.client.getUserByName(username.replace('@', ''));
+            user = robot.brain.userByName(username.replace('@', ''));
           }
           if(!user || !user.profile || !user.profile.email) {
             msg.reply("I dont know who " + username + " is");

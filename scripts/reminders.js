@@ -32,21 +32,24 @@ module.exports = function(robot) {
 
 
   // set up watch renewal and get initial events list on startup
-  _.delay(function() {
+  function init_watch() {
     _.each(robot.brain.users(), function(user) {
-      var slack_user = robot.adapter.client.getUserByName(user.name);
-      if(slack_user && slack_user.deleted) {
-        console.log(slack_user.name + " is deleted");
+      if(user && user.deleted) {
+        console.log(user.name + " is deleted");
         return disable_calendar_reminders(user);
       }
       if(user.calendar_notify_events) {
         setup_watch_renewal(user);
-        user.last_event_update = undefined;
+        user.last_event_update = null;
         getEvents(user);
       }
     });
-  }, 10000); // hack to wait for data to load from redis
-
+  }
+  if (_.keys(robot.brain.users()).length > 0) {
+    init_watch();
+  } else {
+    robot.brain.once("loaded", init_watch);
+  }
 
   // checks each user's calendar events for any with a reminder due
   function checkReminders() {
@@ -55,16 +58,12 @@ module.exports = function(robot) {
       var to_remind = _.filter(events, function(event) {
         var myStatus = _.find(event.attendees, function(a) { return a.self });
         if(myStatus && myStatus === "declined") return;
-        var reminders = event.reminders.useDefault ? user_default_reminders[user_id] : event.reminders.overrides;
-        if(!reminders) return; // no reminders
-        var reminder = _.find(reminders, function(r) { return r.method === 'popup'; });
-        if(!reminder) return; // no popup reminder
         var start_date = new Date(event.start.dateTime);
         var difference = start_date - new Date();
-        return difference > 0 && difference <= (60000*reminder.minutes) && difference > (60000*(reminder.minutes-1));
+        return difference > 0 && difference <= 60*1000;
       });
       _.each(to_remind, function(event) {
-        var attachment = helpers.event_slack_attachment(event, "Your event starts " + moment(new Date(event.start.dateTime)).fromNow(), {when: false, hangout: true});
+        var attachment = helpers.event_slack_attachment(event, "Your meeting is about to start", { when: false });
         var user = robot.brain.userForId(user_id);
         robot.emit("google:calendar:actionable_event", user, event);
         helpers.dm(robot, user, undefined, attachment);
@@ -221,7 +220,7 @@ module.exports = function(robot) {
       });
     });
   }
-  
+
   function disable_calendar_reminders(user) {
     user.calendar_notify_events = false;
     user.calendar_watch_token = null;
@@ -260,24 +259,32 @@ module.exports = function(robot) {
       });
   }
 
-  robot.respond(/enable calendar reminders/i, function(msg) {
-    robot.emit('google:authenticate', msg, function(err, oauth) {
+  function toggleCalendarReminders(msg, shouldEnable) {
+    if (shouldEnable) {
       setup_calendar_watch(msg.message.user, function(err, res) {
         if(err) {
-          msg.reply("Error");
+          msg.reply("Error enabling reminders");
           return console.log(err);
         }
         msg.message.user.calendar_notify_events = true;
         getEvents(msg.message.user);
-        msg.reply("OK, I'll remind you about upcoming events.");
+        msg.reply("I'll remind you about upcoming events.");
       });
+    } else {
+      disable_calendar_reminders(msg.message.user);
+      if(events[msg.message.user.id]) delete events[msg.message.user.id];
+      msg.reply("OK, I won't remind you about upcoming events.");
+    }
+  }
+
+  robot.respond(/enable calendar reminders/i, function(msg) {
+    robot.emit('google:authenticate', msg, function(err, oauth) {
+      toggleCalendarReminders(msg, true)
     });
   });
 
   robot.respond(/disable calendar reminders/i, function(msg) {
-    disable_calendar_reminders(msg.message.user);
-    if(events[msg.message.user.id]) delete events[msg.message.user.id];
-    msg.reply("OK, I won't remind you about upcoming events.");
+    toggleCalendarReminders(msg, false)
   });
 
   robot.respond(/refresh calendar events/i, function(msg) {
