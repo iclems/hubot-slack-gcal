@@ -25,23 +25,17 @@ module.exports = function(robot) {
 
   // store events for each user
   var events = {};
-  // default reminder times for each user
-  var user_default_reminders = {};
-
   var status_text = helpers.status_text;
 
+  robot.brain.data.calendarUsers = robot.brain.data.calendarUsers ? robot.brain.data.calendarUsers : {};
 
   // set up watch renewal and get initial events list on startup
   function init_watch() {
-    _.each(robot.brain.users(), function(user) {
-      if(user && user.deleted) {
-        console.log(user.name + " is deleted");
-        return disable_calendar_reminders(user);
-      }
+    _.each(robot.brain.data.calendarUsers, function(user, userId) {
       if(user.calendar_notify_events) {
         setup_watch_renewal(user);
         user.last_event_update = null;
-        getEvents(user);
+        getEvents(userId);
       }
     });
   }
@@ -98,8 +92,9 @@ module.exports = function(robot) {
 
   // sets up a function to renew the users calendar watch when it expires
   function setup_watch_renewal(user) {
-    if(user.calendar_watch_expiration) {
-      var diff = parseInt(user.calendar_watch_expiration) - new Date().getTime() - 2000;
+    var user_calendar_info = robot.brain.data.calendarUsers[user.id];
+    if (user_calendar_info.calendar_watch_expiration) {
+      var diff = parseInt(user_calendar_info.calendar_watch_expiration) - new Date().getTime() - 2000;
       if(diff < 0) setup_calendar_watch(user);
       else _.delay(function() { setup_calendar_watch(user) }, diff);
       console.log(user.name + ' will renew calendar watch in ' + diff + 'ms');
@@ -108,7 +103,7 @@ module.exports = function(robot) {
 
 
   // populate events list for the given user
-  function getEvents(user) {
+  function getEvents(userId) {
     if(!user.calendar_notify_events) return;
     robot.emit('google:authenticate', user, function(err, oauth) {
       getPrimaryCalendar(oauth, function(err, calendar) {
@@ -118,23 +113,22 @@ module.exports = function(robot) {
         if(last_update) _.extend(params, { updatedMin: last_update });
         googleapis.calendar('v3').events.list(params, function(err, resp) {
           if(err) return console.log(err);
-          user_default_reminders[user.id] = resp.defaultReminders;
           user.last_event_update = new Date().toISOString();
-          if(!last_update || !events[user.id]) {
-            events[user.id] = resp.items;
+          if(!last_update || !events[userId]) {
+            events[userId] = resp.items;
           }
           else {
-            console.log("Event updates for " + user.id);
+            console.log("Event updates for " + userId);
             // stores whether or not we have notified the user for an instance of a recurring event
             var recurrences = {};
             _.each(resp.items, function(new_event) {
-              var old_event = _.find(events[user.id], function(o) { return o.id === new_event.id });
+              var old_event = _.find(events[userId], function(o) { return o.id === new_event.id });
               // event has been updated
-              console.log("updated event for " + user.id + " " + new_event.summary);
+              console.log("updated event for " + userId + " " + new_event.summary);
               if(old_event) {
                 if(new_event.status === 'cancelled') {
                   var old_event = null;
-                  events[user.id] = _.reject(events[user.id], function(o) {
+                  events[userId] = _.reject(events[userId], function(o) {
                     if(o.id === new_event.id) {
                       old_event = o;
                       return true;
@@ -201,8 +195,8 @@ module.exports = function(robot) {
                 }
               }
               else if(new_event.status !== 'cancelled') {
-                console.log("new event for " + user.id + " " + new_event.summary);
-                events[user.id].push(new_event);
+                console.log("new event for " + userId + " " + new_event.summary);
+                events[userId].push(new_event);
                 if(new_event.recurringEventId) {
                   if(recurrences[new_event.recurringEventId]) return;
                   recurrences[new_event.recurringEventId] = true;
@@ -215,7 +209,7 @@ module.exports = function(robot) {
               }
             });
           }
-          console.log("got events for " + user.id);
+          console.log("got events for " + userId);
         });
       });
     });
@@ -233,12 +227,19 @@ module.exports = function(robot) {
         resource_id = req.get("X-Goog-Resource-ID"),
         state = req.get("X-Goog-Resource-State"),
         expires = req.get("X-Goog-Channel-Expiration");
-    if(state === "exists") {
-      var user = _.find(robot.brain.users(), function(u) {
-        return u.calendar_watch_token == channel_id;
+    if (state === "exists") {
+      var userId = null;
+      _.find(robot.brain.data.calendarUsers, function(u, uid) {
+        if (u.calendar_watch_token == channel_id) {
+          userId = uid;
+          return true;
+        } else {
+          return false;
+        }
       });
-      if(user) getEvents(user);
-      else {
+      if (userId) {
+        getEvents(userId);
+      } else {
         googleapis
           .calendar('v3')
           .channels.stop({id: channel_id, resourceId: resource_id}, function(){});
@@ -266,8 +267,8 @@ module.exports = function(robot) {
           msg.reply("Error enabling reminders");
           return console.log(err);
         }
-        msg.message.user.calendar_notify_events = true;
-        getEvents(msg.message.user);
+        robot.brain.data.calendarUsers[msg.message.user.id].calendar_notify_events = true;
+        getEvents(msg.message.user.id);
         msg.reply("I'll remind you about upcoming events.");
       });
     } else {
@@ -288,7 +289,8 @@ module.exports = function(robot) {
   });
 
   robot.respond(/refresh calendar events/i, function(msg) {
-    getEvents(msg.message.user);
+    getEvents(msg.message.user.id);
+    msg.reply("I'll make sure I'm up-to-date.")
   });
 
   robot.router.use(app);
