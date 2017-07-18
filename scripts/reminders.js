@@ -226,9 +226,10 @@ module.exports = function(robot) {
   }
 
   function disable_calendar_reminders(user) {
-    user.calendar_notify_events = false;
-    user.calendar_watch_token = null;
-    user.calendar_watch_expiration = null;
+    var calendar_user = get_calendar_user(user.id);
+    calendar_user.calendar_notify_events = null;
+    calendar_user.calendar_watch_token = null;
+    calendar_user.calendar_watch_expiration = null;
   }
 
 
