@@ -112,6 +112,7 @@ module.exports = function(robot) {
 
   // populate events list for the given user
   function getEvents(userId) {
+    var user = get_calendar_user(userId);
     if(!user.calendar_notify_events) return;
     robot.emit('google:authenticate', user, function(err, oauth) {
       getPrimaryCalendar(oauth, function(err, calendar) {
