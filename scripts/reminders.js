@@ -81,8 +81,8 @@ module.exports = function(robot) {
         var id = uuid.v1();
         googleapis.calendar('v3').events.watch({ auth: oauth, resource: { type: 'web_hook', id: id, address: CALLBACK_URL }, calendarId: calendar.id}, function(err, resp) {
           if(err) return cb(err, undefined);
-          user.calendar_watch_token = id;
-          user.calendar_watch_expiration = resp.expiration;
+          robot.brain.data.calendarUsers[user.id].calendar_watch_token = id;
+          robot.brain.data.calendarUsers[user.id].calendar_watch_expiration = resp.expiration;
           setup_watch_renewal(user);
           cb(undefined, undefined);
         });
@@ -93,7 +93,7 @@ module.exports = function(robot) {
   // sets up a function to renew the users calendar watch when it expires
   function setup_watch_renewal(user) {
     var user_calendar_info = robot.brain.data.calendarUsers[user.id];
-    if (user_calendar_info.calendar_watch_expiration) {
+    if (user_calendar_info && user_calendar_info.calendar_watch_expiration) {
       var diff = parseInt(user_calendar_info.calendar_watch_expiration) - new Date().getTime() - 2000;
       if(diff < 0) setup_calendar_watch(user);
       else _.delay(function() { setup_calendar_watch(user) }, diff);
